@@ -2,7 +2,10 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"strings"
 
 	pb "github.com/navi-prem/ecom-tts/graph-service/api"
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
@@ -17,11 +20,27 @@ func NewProductRepository(driver neo4j.DriverWithContext) *ProductRepository {
 }
 
 func (r *ProductRepository) CreateProduct(ctx context.Context, p *pb.Product) error {
+	// Validate required fields
+	if p.Id == "" {
+		return errors.New("product id is required")
+	}
+	if p.Name == "" {
+		return errors.New("product name is required")
+	}
+	if p.Brand == "" {
+		return errors.New("product brand is required")
+	}
 
 	session := r.driver.NewSession(ctx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close(ctx)
 
-	_, err := session.ExecuteWrite(ctx, func(tx neo4j.ManagedTransaction) (any, error) {
+	// Serialize attributes to JSON string
+	attributesJSON, err := json.Marshal(p.Attributes)
+	if err != nil {
+		return fmt.Errorf("failed to serialize attributes: %w", err)
+	}
+
+	_, err = session.ExecuteWrite(ctx, func(tx neo4j.ManagedTransaction) (any, error) {
 
 		// Create Product
 		_, err := tx.Run(ctx, `
@@ -47,7 +66,7 @@ func (r *ProductRepository) CreateProduct(ctx context.Context, p *pb.Product) er
 			"description":    p.Description,
 			"tags":           p.Tags,
 			"images":         p.Images,
-			"attributes":     p.Attributes,
+			"attributes":     string(attributesJSON),
 		})
 		if err != nil {
 			return nil, err
@@ -104,6 +123,9 @@ func (r *ProductRepository) CreateProduct(ctx context.Context, p *pb.Product) er
 }
 
 func (r *ProductRepository) GetProduct(ctx context.Context, id string) (*pb.Product, error) {
+	if id == "" {
+		return nil, errors.New("product id is required")
+	}
 
 	session := r.driver.NewSession(ctx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeRead})
 	defer session.Close(ctx)
@@ -127,16 +149,76 @@ func (r *ProductRepository) GetProduct(ctx context.Context, id string) (*pb.Prod
 		record := res.Record()
 
 		pNode := record.Values[0].(neo4j.Node)
+		cNode, _ := record.Values[1].(neo4j.Node)
+		sizesList, _ := record.Values[2].([]interface{})
+
 		var product pb.Product
 
 		props := pNode.Props
-		product.Id = props["id"].(string)
-		product.Name = props["name"].(string)
-		product.Brand = props["brand"].(string)
-		product.Color = props["color"].(string)
-		product.Price = props["price"].(float64)
-		product.OriginalPrice = props["original_price"].(float64)
-		product.Description = props["description"].(string)
+		product.Id = getString(props, "id")
+		product.Name = getString(props, "name")
+		product.Brand = getString(props, "brand")
+		product.Color = getString(props, "color")
+		if price, ok := props["price"].(float64); ok {
+			product.Price = price
+		}
+		if origPrice, ok := props["original_price"].(float64); ok {
+			product.OriginalPrice = origPrice
+		}
+		product.Description = getString(props, "description")
+
+		if tags, ok := props["tags"].([]interface{}); ok {
+			for _, tag := range tags {
+				if str, ok := tag.(string); ok {
+					product.Tags = append(product.Tags, str)
+				}
+			}
+		}
+
+		if images, ok := props["images"].([]interface{}); ok {
+			for _, img := range images {
+				if str, ok := img.(string); ok {
+					product.Images = append(product.Images, str)
+				}
+			}
+		}
+
+		if attrsStr, ok := props["attributes"].(string); ok {
+			product.Attributes = make(map[string]string)
+			json.Unmarshal([]byte(attrsStr), &product.Attributes)
+		}
+
+		if cNode.Props != nil {
+			product.Category = &pb.ProductCategory{
+				MainCategory:  getString(cNode.Props, "main_category"),
+				Subcategory:   getString(cNode.Props, "subcategory"),
+				SpecificType:  getString(cNode.Props, "specific_type"),
+			}
+		}
+
+		for _, sizeItem := range sizesList {
+			if sizeNode, ok := sizeItem.(neo4j.Node); ok {
+				sProps := sizeNode.Props
+				size := &pb.ProductSize{
+					Sku:     getString(sProps, "sku"),
+					Size:    getString(sProps, "size"),
+				}
+				if stock, ok := sProps["stock"].(int64); ok {
+					size.Stock = int32(stock)
+				}
+				if inStock, ok := sProps["in_stock"].(bool); ok {
+					size.InStock = inStock
+				}
+				if variants, ok := sProps["variants"].([]interface{}); ok {
+					for _, v := range variants {
+						if str, ok := v.(string); ok {
+							size.Variants = append(size.Variants, str)
+						}
+					}
+				}
+				product.Sizes = append(product.Sizes, size)
+			}
+		}
 
 		return &product, nil
 	})
@@ -153,7 +235,13 @@ func (r *ProductRepository) UpdateProduct(ctx context.Context, p *pb.Product) er
 	session := r.driver.NewSession(ctx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close(ctx)
 
-	_, err := session.ExecuteWrite(ctx, func(tx neo4j.ManagedTransaction) (any, error) {
+	// Serialize attributes to JSON string
+	attributesJSON, err := json.Marshal(p.Attributes)
+	if err != nil {
+		return fmt.Errorf("failed to serialize attributes: %w", err)
+	}
+
+	_, err = session.ExecuteWrite(ctx, func(tx neo4j.ManagedTransaction) (any, error) {
 
 		_, err := tx.Run(ctx, `
 			MATCH (p:Product {id: $id})
@@ -176,7 +264,7 @@ func (r *ProductRepository) UpdateProduct(ctx context.Context, p *pb.Product) er
 			"description":    p.Description,
 			"tags":           p.Tags,
 			"images":         p.Images,
-			"attributes":     p.Attributes,
+			"attributes":     string(attributesJSON),
 		})
 		return nil, err
 	})
@@ -185,6 +273,9 @@ func (r *ProductRepository) UpdateProduct(ctx context.Context, p *pb.Product) er
 }
 
 func (r *ProductRepository) DeleteProduct(ctx context.Context, id string) error {
+	if id == "" {
+		return errors.New("product id is required")
+	}
 
 	session := r.driver.NewSession(ctx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close(ctx)
@@ -201,6 +292,9 @@ func (r *ProductRepository) DeleteProduct(ctx context.Context, id string) error 
 }
 
 func (r *ProductRepository) UpdateStock(ctx context.Context, sku string, stock int32) error {
+	if sku == "" {
+		return errors.New("sku is required")
+	}
 
 	session := r.driver.NewSession(ctx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close(ctx)
@@ -230,6 +324,37 @@ func getString(props map[string]any, key string) string {
 	return ""
 }
 
+// validateCypherQuery checks if the query is safe to execute
+func validateCypherQuery(query string) error {
+	// Convert to uppercase for case-insensitive checking
+	upperQuery := strings.ToUpper(query)
+	
+	// List of dangerous Cypher keywords that should be blocked
+	dangerousKeywords := []string{
+		"CREATE", "MERGE", "DELETE", "DETACH", "DROP", "REMOVE", "SET",
+		"CALL", "LOAD", "UNWIND", "FOREACH", "APOC", "GDS",
+	}
+	
+	for _, keyword := range dangerousKeywords {
+		if strings.Contains(upperQuery, keyword) {
+			return fmt.Errorf("unsafe query: contains forbidden keyword '%s'", keyword)
+		}
+	}
+	
+	// Ensure query starts with MATCH
+	trimmed := strings.TrimSpace(upperQuery)
+	if !strings.HasPrefix(trimmed, "MATCH") {
+		return fmt.Errorf("unsafe query: must start with MATCH")
+	}
+	
+	// Ensure query contains RETURN
+	if !strings.Contains(upperQuery, "RETURN") {
+		return fmt.Errorf("unsafe query: must contain RETURN clause")
+	}
+	
+	return nil
+}
+
 /*
 NEED TO RUN ONCE
 
@@ -241,6 +366,11 @@ func (r *ProductRepository) SearchProducts(
     ctx context.Context,
     queryStr string,
 ) ([]*pb.Product, error) {
+    // Validate the query for safety
+    if err := validateCypherQuery(queryStr); err != nil {
+        return nil, err
+    }
+
     session := r.driver.NewSession(ctx, neo4j.SessionConfig{
         AccessMode: neo4j.AccessModeRead,
     })

@@ -211,12 +211,24 @@ class VectorStore:
         return Filter(must=conditions) if conditions else None
     
     def delete_product(self, product_id: str) -> bool:
-        """Delete a product by ID."""
+        """Delete a product by ID. Returns True only if product existed and was deleted."""
         if self.client is None:
             raise RuntimeError("Client not initialized")
         try:
-            # Convert to UUID if it's a string product_id
+            # First check if product exists
             point_id = _generate_point_id(product_id)
+            existing = self.client.retrieve(
+                collection_name=self.collection_name,
+                ids=[point_id],
+                with_payload=False,
+                with_vectors=False
+            )
+            
+            if not existing:
+                logger.info(f"Product not found for deletion: {product_id}")
+                return False
+            
+            # Product exists, delete it
             self.client.delete(
                 collection_name=self.collection_name,
                 points_selector=[point_id]

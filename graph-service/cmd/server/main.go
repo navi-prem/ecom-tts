@@ -10,6 +10,7 @@ import (
 
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
 )
 
 func main() {
@@ -34,6 +35,9 @@ func main() {
 	grpcServer := grpc.NewServer()
 
 	pb.RegisterGraphServiceServer(grpcServer, productService)
+
+	// Enable gRPC reflection for grpcurl
+	reflection.Register(grpcServer)
 
 	log.Println("Graph Service running on :50051")
 	if err := grpcServer.Serve(lis); err != nil {

@@ -1,0 +1,102 @@
+syntax = "proto3";
+
+package graph;
+
+option go_package = "github.com/navi-prem/ecom-tts/graph-service/api;api";
+
+service GraphService {
+  rpc CreateProduct(CreateProductRequest) returns (CreateProductResponse);
+  rpc GetProduct(GetProductRequest) returns (GetProductResponse);
+  rpc UpdateProduct(UpdateProductRequest) returns (UpdateProductResponse);
+  rpc DeleteProduct(DeleteProductRequest) returns (DeleteProductResponse);
+
+  rpc UpdateStock(UpdateStockRequest) returns (UpdateStockResponse);
+
+  rpc SearchProducts(SearchProductsRequest) returns (SearchProductsResponse);
+}
+
+message ProductCategory {
+  string main_category = 1;
+  string subcategory = 2;
+  string specific_type = 3;
+}
+
+message ProductSize {
+  string size = 1;
+  int32 stock = 2;
+  bool in_stock = 3;
+  repeated string variants = 4;
+  string sku = 5;
+}
+
+message Product {
+  string id = 1;
+  string name = 2;
+  string brand = 3;
+  ProductCategory category = 4;
+  string color = 5;
+  double price = 6;
+  double original_price = 7;
+  repeated ProductSize sizes = 8;
+  repeated string tags = 9;
+  map<string, string> attributes = 10;
+  string description = 11;
+  repeated string images = 12;
+}
+
+// PRODUCT
+message CreateProductRequest {
+  Product product = 1;
+}
+
+message CreateProductResponse {
+  string id = 1;
+}
+
+// GET
+message GetProductRequest {
+  string id = 1;
+}
+
+message GetProductResponse {
+  Product product = 1;
+}
+
+// UPDATE
+message UpdateProductRequest {
+  Product product = 1;
+}
+
+message UpdateProductResponse {
+  bool success = 1;
+}
+
+// STOCK
+message UpdateStockRequest {
+  string product_id = 1;
+  string sku = 2;
+  int32 new_stock = 3;
+}
+
+message UpdateStockResponse {
+  bool success = 1;
+}
+
+// DELETE
+message DeleteProductRequest {
+  string id = 1;
+}
+
+message DeleteProductResponse {
+  bool success = 1;
+}
+
+// SEARCH
+message SearchProductsRequest {
+  string query = 1;
+}
+
+message SearchProductsResponse {
+  repeated Product products = 1;
+  int32 total = 2;
+}

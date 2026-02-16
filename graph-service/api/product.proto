@@ -1,0 +1,147 @@
+syntax = "proto3";
+
+package product;
+
+option go_package = "github.com/navi-prem/ecom-tts/product-service/api;api";
+option python_package = "product_pb2";
+
+service ProductService {
+  // Product CRUD operations
+  rpc CreateProduct(CreateProductRequest) returns (CreateProductResponse);
+  rpc GetProduct(GetProductRequest) returns (GetProductResponse);
+  rpc UpdateProduct(UpdateProductRequest) returns (UpdateProductResponse);
+  rpc DeleteProduct(DeleteProductRequest) returns (DeleteProductResponse);
+  
+  // Batch operations
+  rpc CreateProductsBatch(CreateProductsBatchRequest) returns (CreateProductsBatchResponse);
+  
+  // Search operations
+  rpc SearchProducts(SearchProductsRequest) returns (SearchProductsResponse);
+  rpc SemanticSearch(SemanticSearchRequest) returns (SearchProductsResponse);
+  
+  // Health check
+  rpc Health(HealthRequest) returns (HealthResponse);
+}
+
+// Common message types
+message ProductCategory {
+  string main_category = 1;
+  string subcategory = 2;
+  string specific_type = 3;
+}
+
+message ProductSize {
+  string size = 1;
+  int32 stock = 2;
+  bool in_stock = 3;
+  repeated string variants = 4;
+  string sku = 5;
+}
+
+message Product {
+  string id = 1;
+  string name = 2;
+  string brand = 3;
+  ProductCategory category = 4;
+  string color = 5;
+  double price = 6;
+  double original_price = 7;
+  repeated ProductSize sizes = 8;
+  repeated string tags = 9;
+  map<string, string> attributes = 10;
+  string description = 11;
+  repeated string images = 12;
+}
+
+// Search result with score
+message SearchResult {
+  Product product = 1;
+  double score = 2;
+  string source = 3; // "semantic", "graph", or "combined"
+}
+
+// Create Product
+message CreateProductRequest {
+  Product product = 1;
+}
+
+message CreateProductResponse {
+  string id = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+// Get Product
+message GetProductRequest {
+  string id = 1;
+}
+
+message GetProductResponse {
+  Product product = 1;
+  bool found = 2;
+}
+
+// Update Product
+message UpdateProductRequest {
+  Product product = 1;
+}
+
+message UpdateProductResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// Delete Product
+message DeleteProductRequest {
+  string id = 1;
+}
+
+message DeleteProductResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// Batch Create
+message CreateProductsBatchRequest {
+  repeated Product products = 1;
+}
+
+message CreateProductsBatchResponse {
+  int32 inserted_count = 1;
+  int32 total = 2;
+  bool success = 3;
+  string message = 4;
+  repeated string failed_ids = 5;
+}
+
+// Search Products (Graph-based search)
+message SearchProductsRequest {
+  string query = 1;
+  int32 limit = 2;
+  map<string, string> filters = 3;
+}
+
+// Semantic Search
+message SemanticSearchRequest {
+  string query = 1;
+  int32 limit = 2;
+  map<string, string> filters = 3;
+  double min_score = 4;
+}
+
+// Search Response
+message SearchProductsResponse {
+  repeated SearchResult results = 1;
+  int32 total = 2;
+  string query = 3;
+}
+
+// Health Check
+message HealthRequest {}
+
+message HealthResponse {
+  string status = 1;
+  int32 products_count = 2;
+  bool database_connected = 3;
+  string service_name = 4;
+}
